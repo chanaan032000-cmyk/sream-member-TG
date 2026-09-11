@@ -68,10 +68,16 @@ async function ensureJoined(client, group) {
 
 // --- Routes ---
 app.get("/accounts", (req, res) => {
-  const list = Object.keys(clients).map((name) => ({
-    name,
-    phone: accountsInfo[name]?.phone || "",
-  }));
+  const list = Object.keys(clients).map((key) => {
+    const number = key.replace("account", "");
+
+    return {
+      key: key,
+      name: `Account ${number.padStart(2, "0")}`,
+      phone: accountsInfo[key]?.phone || "",
+    };
+  });
+
   res.json(list);
 });
 
