@@ -1,5 +1,6 @@
-```js
-require("dotenv").config();
+from pathlib import Path
+
+server_js = r'''require("dotenv").config();
 
 const express = require("express");
 const path = require("path");
@@ -33,18 +34,10 @@ app.get("/", (req, res) => {
 ========================= */
 
 let clients = {};
-let stats = {
-  success: 0,
-  fail: 0
-};
-
+let stats = { success: 0, fail: 0 };
 let logs = [];
 let accountStatus = {};
 let isRunning = false;
-
-/*
-   Flood wait records
-*/
 let floodWaits = [];
 
 /* =========================
@@ -61,9 +54,7 @@ for (let i = 1; i <= 10; i++) {
       new StringSession(session),
       parseInt(apiId),
       apiHash,
-      {
-        connectionRetries: 5
-      }
+      { connectionRetries: 5 }
     );
 
     accountStatus[`account${i}`] = "UNKNOWN";
@@ -74,8 +65,7 @@ for (let i = 1; i <= 10; i++) {
    HELPERS
 ========================= */
 
-const sleep = (ms) =>
-  new Promise(resolve => setTimeout(resolve, ms));
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function safeConnect(client) {
   try {
@@ -100,9 +90,7 @@ async function checkAccount(name, client) {
     } else {
       accountStatus[name] = "ERROR";
     }
-
   } catch (err) {
-
     if (err.message?.includes("FLOOD_WAIT")) {
       accountStatus[name] = "FLOOD";
     } else {
@@ -111,17 +99,12 @@ async function checkAccount(name, client) {
   }
 }
 
-/* =========================
-   REFRESH ACCOUNT STATUS
-========================= */
-
 async function refreshAccountStatus() {
   for (const name of Object.keys(clients)) {
     await checkAccount(name, clients[name]);
   }
 }
 
-/* Initial account check */
 refreshAccountStatus();
 
 /* =========================
@@ -129,20 +112,13 @@ refreshAccountStatus();
 ========================= */
 
 app.get("/accounts", (req, res) => {
-
-  const result = Object.keys(clients).map(name => ({
-    name: name,
-
-    /*
-      Phone is not read from environment.
-      Keep empty if phone is not available.
-    */
-    phone: "",
-
-    status: accountStatus[name] || "UNKNOWN"
-  }));
-
-  res.json(result);
+  res.json(
+    Object.keys(clients).map(name => ({
+      name,
+      phone: "",
+      status: accountStatus[name] || "UNKNOWN"
+    }))
+  );
 });
 
 /* =========================
@@ -150,7 +126,6 @@ app.get("/accounts", (req, res) => {
 ========================= */
 
 app.get("/account-status", async (req, res) => {
-
   await refreshAccountStatus();
 
   res.json(
@@ -162,11 +137,10 @@ app.get("/account-status", async (req, res) => {
 });
 
 /* =========================
-   MANUAL ACCOUNT CHECK
+   MANUAL CHECK
 ========================= */
 
 app.post("/check-accounts", async (req, res) => {
-
   await refreshAccountStatus();
 
   res.json({
@@ -179,42 +153,20 @@ app.post("/check-accounts", async (req, res) => {
    FLOOD WAITS
 ========================= */
 
-/*
-  IMPORTANT:
-  This endpoint must exist because index.html calls:
-
-  GET /flood-waits
-*/
-
 app.get("/flood-waits", (req, res) => {
-
   const now = Date.now();
 
-  /*
-    Remove expired flood waits
-  */
-  floodWaits = floodWaits.filter(item => {
-    const end = new Date(item.endTime).getTime();
-    return end > now;
-  });
-
-  /*
-    Update remaining seconds
-  */
-  floodWaits = floodWaits.map(item => {
-
-    const end = new Date(item.endTime).getTime();
-
-    const remainingSec = Math.max(
-      0,
-      Math.ceil((end - now) / 1000)
-    );
-
-    return {
+  floodWaits = floodWaits
+    .filter(item => new Date(item.endTime).getTime() > now)
+    .map(item => ({
       ...item,
-      remainingSec
-    };
-  });
+      remainingSec: Math.max(
+        0,
+        Math.ceil(
+          (new Date(item.endTime).getTime() - now) / 1000
+        )
+      )
+    }));
 
   res.json(floodWaits);
 });
@@ -223,14 +175,7 @@ app.get("/flood-waits", (req, res) => {
    RETRY
 ========================= */
 
-/*
-  Keep endpoint so the frontend does not receive 404.
-
-  Automatic retry is intentionally not performed.
-*/
-
 app.post("/retry", (req, res) => {
-
   res.status(400).json({
     success: false,
     message: "Retry is not available."
@@ -242,7 +187,6 @@ app.post("/retry", (req, res) => {
 ========================= */
 
 app.post("/export-members", async (req, res) => {
-
   const {
     account,
     group,
@@ -261,39 +205,19 @@ app.post("/export-members", async (req, res) => {
   }
 
   try {
-
     await safeConnect(client);
 
-    const participants =
-      await client.getParticipants(group);
+    const participants = await client.getParticipants(group);
 
     let filtered = participants;
 
-    /*
-      Username filter
-    */
-
     if (filterMembers === "username") {
-
-      filtered = filtered.filter(
-        p => p.username
-      );
+      filtered = filtered.filter(p => p.username);
     }
-
-    /*
-      Profile photo filter
-    */
 
     if (filterPhoto === "has") {
-
-      filtered = filtered.filter(
-        p => p.photo
-      );
+      filtered = filtered.filter(p => p.photo);
     }
-
-    /*
-      Convert to username / ID
-    */
 
     const ids = filtered
       .map(p => p.username || p.id)
@@ -303,13 +227,8 @@ app.post("/export-members", async (req, res) => {
       success: true,
       ids
     });
-
   } catch (err) {
-
-    console.log(
-      "Export error:",
-      err.message
-    );
+    console.log("Export error:", err.message);
 
     res.json({
       success: false,
@@ -323,39 +242,22 @@ app.post("/export-members", async (req, res) => {
 ========================= */
 
 app.post("/start", async (req, res) => {
-
-  const {
-    group,
-    usernames,
-    accounts
-  } = req.body;
+  const { group, usernames, accounts } = req.body;
 
   if (isRunning) {
-
-    return res.json({
-      message: "Already running"
-    });
+    return res.json({ message: "Already running" });
   }
 
   if (!group) {
-
-    return res.json({
-      message: "Target group required"
-    });
+    return res.json({ message: "Target group required" });
   }
 
   if (!Array.isArray(usernames) || usernames.length === 0) {
-
-    return res.json({
-      message: "No members provided"
-    });
+    return res.json({ message: "No members provided" });
   }
 
   if (!Array.isArray(accounts) || accounts.length === 0) {
-
-    return res.json({
-      message: "No accounts selected"
-    });
+    return res.json({ message: "No accounts selected" });
   }
 
   await refreshAccountStatus();
@@ -365,51 +267,28 @@ app.post("/start", async (req, res) => {
   );
 
   if (!activeAccounts.length) {
-
     return res.json({
       message: "No ACTIVE accounts found"
     });
   }
 
   isRunning = true;
-
-  stats = {
-    success: 0,
-    fail: 0
-  };
-
+  stats = { success: 0, fail: 0 };
   logs = [];
 
   let uIndex = 0;
   let aIndex = 0;
 
-  while (
-    isRunning &&
-    uIndex < usernames.length
-  ) {
-
-    const accountName =
-      activeAccounts[aIndex];
-
-    const client =
-      clients[accountName];
-
-    const username =
-      usernames[uIndex];
+  while (isRunning && uIndex < usernames.length) {
+    const accountName = activeAccounts[aIndex];
+    const client = clients[accountName];
+    const username = usernames[uIndex];
 
     try {
-
       await safeConnect(client);
 
-      const user =
-        await client.getEntity(username);
-
-      const groupEntity =
-        await client.getEntity(group);
-
-      /*
-        Existing Telegram operation
-      */
+      const user = await client.getEntity(username);
+      const groupEntity = await client.getEntity(group);
 
       await client.invoke(
         new Api.channels.InviteToChannel({
@@ -420,14 +299,9 @@ app.post("/start", async (req, res) => {
 
       await sleep(2000);
 
-      /*
-        Verify
-      */
-
       let ok = false;
 
       try {
-
         await client.invoke(
           new Api.channels.GetParticipant({
             channel: groupEntity,
@@ -436,14 +310,11 @@ app.post("/start", async (req, res) => {
         );
 
         ok = true;
-
       } catch {
-
         ok = false;
       }
 
       if (ok) {
-
         stats.success++;
 
         logs.push({
@@ -451,9 +322,7 @@ app.post("/start", async (req, res) => {
           status: "success",
           account: accountName
         });
-
       } else {
-
         stats.fail++;
 
         logs.push({
@@ -465,39 +334,25 @@ app.post("/start", async (req, res) => {
       }
 
       uIndex++;
-
     } catch (err) {
-
-      const message =
-        err?.message || String(err);
+      const message = err?.message || String(err);
 
       console.log(
         `[${accountName}] ${username}: ${message}`
       );
 
-      /*
-        Record FLOOD_WAIT for UI.
-      */
+      if (message.includes("FLOOD_WAIT")) {
+        const match = message.match(
+          /FLOOD_WAIT[_\s]*(\d+)/i
+        );
 
-      if (
-        message.includes("FLOOD_WAIT")
-      ) {
+        const seconds = match
+          ? parseInt(match[1])
+          : 0;
 
-        const match =
-          message.match(
-            /FLOOD_WAIT[_\s]*(\d+)/i
-          );
-
-        const seconds =
-          match
-            ? parseInt(match[1])
-            : 0;
-
-        const endTime =
-          new Date(
-            Date.now() +
-            seconds * 1000
-          ).toISOString();
+        const endTime = new Date(
+          Date.now() + seconds * 1000
+        ).toISOString();
 
         floodWaits.push({
           username,
@@ -506,8 +361,9 @@ app.post("/start", async (req, res) => {
           remainingSec: seconds
         });
 
-        accountStatus[accountName] =
-          "FLOOD";
+        accountStatus[accountName] = "FLOOD";
+
+        stats.fail++;
 
         logs.push({
           username,
@@ -516,30 +372,20 @@ app.post("/start", async (req, res) => {
           error: "FLOOD_WAIT"
         });
 
-        stats.fail++;
-
-        /*
-          Stop instead of bypassing
-          the rate limit.
-        */
-
         isRunning = false;
-
         break;
-
-      } else {
-
-        stats.fail++;
-
-        logs.push({
-          username,
-          status: "fail",
-          account: accountName,
-          error: message
-        });
-
-        uIndex++;
       }
+
+      stats.fail++;
+
+      logs.push({
+        username,
+        status: "fail",
+        account: accountName,
+        error: message
+      });
+
+      uIndex++;
     }
 
     if (isRunning) {
@@ -559,7 +405,6 @@ app.post("/start", async (req, res) => {
 ========================= */
 
 app.post("/stop", (req, res) => {
-
   isRunning = false;
 
   res.json({
@@ -572,7 +417,6 @@ app.post("/stop", (req, res) => {
 ========================= */
 
 app.post("/restart", (req, res) => {
-
   isRunning = false;
 
   stats = {
@@ -581,10 +425,6 @@ app.post("/restart", (req, res) => {
   };
 
   logs = [];
-
-  /*
-    Clear expired / old flood records
-  */
   floodWaits = [];
 
   res.json({
@@ -597,7 +437,6 @@ app.post("/restart", (req, res) => {
 ========================= */
 
 app.get("/stats", (req, res) => {
-
   res.json(stats);
 });
 
@@ -606,10 +445,7 @@ app.get("/stats", (req, res) => {
 ========================= */
 
 app.get("/member-logs", (req, res) => {
-
-  res.json(
-    logs.slice(-500)
-  );
+  res.json(logs.slice(-500));
 });
 
 /* =========================
@@ -617,7 +453,6 @@ app.get("/member-logs", (req, res) => {
 ========================= */
 
 app.get("/health", (req, res) => {
-
   res.json({
     success: true,
     status: "online",
@@ -631,46 +466,14 @@ app.get("/health", (req, res) => {
 ========================= */
 
 app.listen(PORT, () => {
-
-  console.log(
-    `Server running on port ${PORT}`
-  );
-
+  console.log(`Server running on port ${PORT}`);
   console.log(
     `Accounts loaded: ${Object.keys(clients).length}`
   );
 });
-```
+'''
 
-### បន្ទាប់ពីដាក់ Code នេះ
-
-ធ្វើ៖
-
-```text
-Save server.js
-       ↓
-Git add / commit / push
-       ↓
-Render Auto Deploy
-       ↓
-Refresh Browser
-```
-
-ហើយសាកល្បង URL នេះ៖
-
-[https://sream-member-tg-1.onrender.com/flood-waits](https://sream-member-tg-1.onrender.com/flood-waits?utm_source=chatgpt.com)
-
-បើត្រឹមត្រូវ វានឹងបង្ហាញ៖
-
-```json
-[]
-```
-
-បន្ទាប់មក error នេះ៖
-
-```text
-GET /flood-waits 404
-Unexpected token '<'
-```
-
-នឹងបាត់។
+path = Path("/mnt/data/server.js")
+path.write_text(server_js, encoding="utf-8")
+print(f"Created: {path}")
+print(f"Size: {path.stat().st_size} bytes")
