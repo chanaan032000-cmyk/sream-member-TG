@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Telegram Add Member Ultimate</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:sans-serif;background:#0f172a;color:#fff;display:flex;justify-content:center;padding:30px 10px;}
+.container{width:100%;max-width:750px;background:#1e293b;border-radius:20px;padding:30px;box-shadow:0 15px 40px rgba(0,0,0,0.5);}
+h2{text-align:center;color:#38bdf8;margin-bottom:20px;}
+h3{margin:20px 0 10px;color:#a5b4fc;}
+input,textarea,select{width:100%;padding:12px;margin-top:8px;border-radius:10px;border:none;background:#0f172a;color:#fff;}
+textarea{height:120px;resize:vertical;}
+.accountsBox{max-height:100px; height: 80px;  overflow-y:auto;background:#0f172a;padding:10px;border-radius:10px;border:1px solid #334155;}
+.accountsBox div{padding:5px 0;}
+.accountsBox label{cursor:pointer;}
+.accountsBox .blocked{color:red;font-weight:600;}
+.btns{display:flex;gap:15px;margin-top:20px;flex-wrap:wrap;}
+button{flex:1;padding:12px;border:none;border-radius:12px;font-weight:600;cursor:pointer;transition:all 0.3s;}
+.start{background:linear-gradient(90deg,#38bdf8,#0ea5e9);}
+.stop{background:linear-gradient(90deg,#f87171,#ef4444);}
+.restart{background:linear-gradient(90deg,#fbbf24,#f59e0b);}
+.stats{display:flex;justify-content:space-around;background:#0f172a;padding:15px 10px;border-radius:12px;border:1px solid #334155;margin-top:15px;font-weight:600;}
+#status{margin-top:20px;background:#0f172a;padding:12px;border-radius:12px;border:1px solid #334155;min-height:40px;line-height:1.4;}
+
+#memberList .success { color: #22c55e; }   /* green */
+#memberList .fail    { color: #ef4444; }   /* red */
+#memberList .skipped { color: #fbbf24; }   /* yellow */
+#memberList .flood   { color: #38bdf8; }   /* blue */
+#memberList div {
+  padding: 2px 0;
+  font-family: monospace;
+  white-space: pre-wrap;
+}
+/* Status box */
+#status {
+  height: 50px;               /* fixed height for status messages */
+  overflow-y: auto;           /* scroll if content exceeds height */
+  background: #0f172a;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #334155;
+  line-height: 1.4;
+  font-family: monospace;     /* makes it look like CMD/terminal */
+  font-size: 14px;
+}
+
+/* Member log box */
+#memberList {
+  height: 300px;       /* fixed size */
+  overflow-y: auto;    /* scrollable */
+  font-family: monospace;
+  white-space: pre-wrap;
+  background: #0f172a;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid #334155;
+}
+#status {
+  height: 50px;
+  overflow-y: auto;
+  background: #0f172a;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  font-family: monospace;
+  color: #f5f5f5;
+  white-space: pre-wrap;
+}
+
+
+label input[type="checkbox"]{margin-right:8px;}
+@media(max-width:600px){.btns{flex-direction:column;}}
+.floodWait{color:#fbbf24;}
+</style>
+</head>
+<body>
+<div class="container">
+<h2>Telegram Add Member Ultimate</h2>
+
+<h3>Select Accounts</h3>
+<div id="accountsList" class="accountsBox"></div>
+<label><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"> Select All</label>
+
+<h3>Source Group (Export Members)</h3>
+<input type="text" id="sourceGroup" placeholder="Source Group">
+
+<div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+  <div>
+    <label>Members:</label>
+    <select id="filterMembers">
+      <option value="all" selected>All</option>
+      <option value="username">Username Only</option>
+    </select>
+  </div>
+  <div>
+    <label>Last Online:</label>
+    <select id="filterLastOnline">
+      <option value="all" selected>All</option>
+      <option value="week">This Week</option>
+      <option value="month">This Month</option>
+    </select>
+  </div>
+  <div>
+    <label>Profile Photo:</label>
+    <select id="filterPhoto">
+      <option value="all" selected>All</option>
+      <option value="has">Has Photo</option>
+    </select>
+  </div>
+</div>
+
+<div style="margin-top:10px;font-weight:600;">
+  Export Total: <span id="exportTotal">0</span>
+</div>
+
+<button class="start" onclick="exportMembers()">Export Members</button>
+
+<h3>Target Group (Add Members)</h3>
+<input type="text" id="targetGroup" placeholder="Target Group">
+
+<h3>Member IDs/Usernames</h3>
+<textarea id="users" placeholder="IDs/Usernames"></textarea>
+
+<div class="btns">
+<button class="start" onclick="start()">Start</button>
+<button class="stop" onclick="stop()">Stop</button>
+<button class="restart" onclick="restart()">Restart</button>
+</div>
+
+<div class="stats">
+<div>Success: <span id="success">0</span></div>
+<div>Fail: <span id="fail">0</span></div>
+</div>
+
+<div id="status"></div>
+<h3>Members Log & FLOOD_WAIT</h3>
+<div id="memberList"></div>
+</div>
+
+<script>
+async function loadAccounts(){
+  const res = await fetch("/accounts");
+  const accounts = await res.json();
+  const floodRes = await fetch("/flood-waits");
+  const floodData = await floodRes.json();
+  const container = document.getElementById("accountsList");
+  container.innerHTML = "";
+
+  accounts.forEach(acc=>{
+    const fw = floodData.find(f=>f.account===acc.name && new Date(f.endTime) > new Date());
+    const isBlocked = !!fw;
+    const labelText = isBlocked
+      ? `${acc.name} (${acc.phone}) – Retry at ${fw.endTime}`
+      : `${acc.name} (${acc.phone})`;
+    const div = document.createElement("div");
+    div.className = isBlocked ? "blocked" : "";
+    div.innerHTML = `<label>
+      <input type="checkbox" class="accountChk" value="${acc.name}" ${isBlocked?'disabled':''}>
+      ${labelText}
+    </label>`;
+    container.appendChild(div);
+  });
+}
+loadAccounts();
+
+function toggleSelectAll(){
+  const checked = document.getElementById("selectAll").checked;
+  document.querySelectorAll(".accountChk:not(:disabled)").forEach(chk=>chk.checked=checked);
+}
+function getSelectedAccounts(){
+  const selected=[];
+  document.querySelectorAll(".accountChk:checked").forEach(chk=>selected.push(chk.value));
+  return selected;
+}
+
+async function exportMembers(){
+  const selectedAccounts = getSelectedAccounts();
+  if(selectedAccounts.length===0){ alert("Select at least one account"); return; }
+  const group = document.getElementById("sourceGroup").value;
+  const account = selectedAccounts[0];
+  const filterMembers = document.getElementById("filterMembers").value;
+  const filterLastOnline = document.getElementById("filterLastOnline").value;
+  const filterPhoto = document.getElementById("filterPhoto").value;
+
+  document.getElementById("status").innerText="Loading members...";
+  const res = await fetch("/export-members",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({account, group, filterMembers, filterLastOnline, filterPhoto})
+  });
+  const data = await res.json();
+  if(data.success){
+    document.getElementById("users").value=data.ids.join("\n");
+    document.getElementById("exportTotal").innerText=data.ids.length;
+    document.getElementById("status").innerText=`Exported ${data.ids.length} members`;
+  } else {
+    document.getElementById("status").innerText=`Error: ${data.error}`;
+  }
+}
+
+async function start() {
+  const group = document.getElementById("targetGroup").value;
+  const users = document.getElementById("users").value.split("\n").map(u => u.trim()).filter(u => u !== "");
+  const accounts = getSelectedAccounts();
+
+  if (accounts.length === 0) { alert("Select at least one account"); return; }
+  if (!group) { alert("Target group required"); return; }
+
+  // Disable Start button while adding
+  const startBtn = document.querySelector(".start");
+  startBtn.disabled = true;
+  startBtn.style.opacity = 0.6;   // optional: gray it out
+  startBtn.style.cursor = "not-allowed";
+
+  // Show loading message
+  const statusDiv = document.getElementById("status");
+  statusDiv.innerHTML = "⏳ Adding members, please wait...";
+
+  const memberLog = document.getElementById("memberList");
+  memberLog.innerHTML = "";
+
+  try {
+    const res = await fetch("/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ group, usernames: users, accounts })
+    });
+    const data = await res.json();
+
+    statusDiv.innerHTML = data.message || "✅ Started adding members";
+  } catch (err) {
+    statusDiv.innerHTML = `❌ Error: ${err.message}`;
+    // Re-enable Start button if error occurs
+    startBtn.disabled = false;
+    startBtn.style.opacity = 1;
+    startBtn.style.cursor = "pointer";
+  }
+}
+
+async function stop() { 
+  const startBtn = document.querySelector(".start");
+  startBtn.disabled = false;
+  startBtn.style.opacity = 1;
+  startBtn.style.cursor = "pointer";
+
+  const res = await fetch("/stop", { method:"POST" }); 
+  const data = await res.json(); 
+  document.getElementById("status").innerText = data.message; 
+}
+
+async function restart() { 
+  const startBtn = document.querySelector(".start");
+  startBtn.disabled = false;
+  startBtn.style.opacity = 1;
+  startBtn.style.cursor = "pointer";
+
+  const res = await fetch("/restart", { method:"POST" }); 
+  const data = await res.json(); 
+  document.getElementById("status").innerText = data.message; 
+
+  document.getElementById("success").innerText = 0; 
+  document.getElementById("fail").innerText = 0; 
+  document.getElementById("memberList").innerHTML = "";
+  document.getElementById("exportTotal").innerText = 0;
+  loadAccounts(); 
+}
+
+async function restart(){ 
+  const res=await fetch("/restart",{method:"POST"}); 
+  const data=await res.json(); 
+  document.getElementById("status").innerText=data.message; 
+  document.getElementById("success").innerText=0; 
+  document.getElementById("fail").innerText=0; 
+  document.getElementById("memberList").innerHTML="";
+  document.getElementById("exportTotal").innerText = 0;
+  loadAccounts(); 
+}
+
+async function updateUI(){
+  const statsRes = await fetch("/stats");
+  const statsData = await statsRes.json();
+  document.getElementById("success").innerText=statsData.success;
+  document.getElementById("fail").innerText=statsData.fail;
+const memberLog = document.getElementById("memberList");
+memberLog.innerHTML="";
+
+const logsRes = await fetch("/member-logs");
+const logs = await logsRes.json();
+logs.forEach(l => {
+  const div = document.createElement("div");
+  
+  if (l.status === "success") {
+    div.className = "success";
+    div.innerText = `✅ ${l.username} added by ${l.account}`;
+  } else if (l.status === "fail") {
+    div.className = "fail";
+    div.innerText = `❌ ${l.username} (${l.error}) added by ${l.account}`;
+  } else if (l.status === "skipped") {
+    div.className = "skipped";
+    div.innerText = `⚠️ ${l.username} skipped (${l.reason}) added by ${l.account}`;
+  }
+
+  memberLog.appendChild(div);
+});
+
+// FLOOD_WAIT entries
+const floodRes = await fetch("/flood-waits");
+const floodData = await floodRes.json();
+floodData.forEach(fw => {
+  if (new Date(fw.endTime) < new Date()) return; // skip expired
+
+  const div = document.createElement("div");
+  div.className = "flood"; // blue color
+  div.innerHTML = `⏳ ${fw.username} on ${fw.account} – Retry at <b>${fw.endTime}</b> (<span id="countdown-${fw.username}">${fw.remainingSec}</span>s)`;
+
+  const btn = document.createElement("button");
+  btn.innerText = "Retry Now";
+  btn.style.marginLeft = "10px";
+  btn.onclick = async () => {
+    const res = await fetch("/retry", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({
+        username: fw.username,
+        group: document.getElementById("targetGroup").value
+      })
+    });
+    const data = await res.json();
+    alert(data.message || data.error);
+  };
+  div.appendChild(btn);
+  memberLog.appendChild(div);
+});
+
+// ✅ Auto-scroll to bottom like a terminal
+memberLog.scrollTop = memberLog.scrollHeight;
+}
+
+setInterval(()=>{
+  document.querySelectorAll("[id^='countdown-']").forEach(span=>{
+    let sec=parseInt(span.innerText);
+    if(sec>0) sec--;
+    span.innerText=sec;
+  });
+},1000);
+
+setInterval(updateUI,1000);
+</script>
+</body>
+</html>
